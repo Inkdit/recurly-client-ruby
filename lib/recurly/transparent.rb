@@ -1,4 +1,6 @@
+# -*- coding: utf-8 -*-
 require 'erb'
+require 'cgi'
 
 module Recurly
 
@@ -58,13 +60,37 @@ module Recurly
 
     # convert data into query string
     def self.query_string(data = {})
-      # process data
+
+      # MB: start hack around incorrect encoding of nested elements.
+      # The problem is that the add_ons are being munged by process_data
+      # command, then passed to addressable, which can't parse the result.
+      #
+      # It seems like a bad idea to create an external dependency on addressable's 
+      # method of query-string encoding nested ruby elements, then hope it matches what
+      # recurly expects.  This method should encode the data structure in the format 
+      # recurly expects them explicitly, e.g. via CGI.
+
+      add_ons = data[:subscription][:add_ons]
+      data[:subscription].delete(:add_ons)
+
       data = process_data(data.dup)
       data[:time] = Time.now.utc.strftime("%d/%b/%Y %H:%M:%S %Z")
-
+      
       address = Addressable::URI.new
       address.query_values = data
-      address.query
+      result = address.query
+
+      i = 0
+      add_ons.each do |add_on|
+        result << "&subscription[add_ons][#{i}][unit_amount_in_cents]=#{CGI::escape(add_on[:unit_amount_in_cents])}"
+        result << "&subscription[add_ons][#{i}][quantity]=#{CGI::escape(add_on[:quantity])}"
+        result << "&subscription[add_ons][#{i}][add_on_code]=#{CGI::escape(add_on[:add_on_code])}"        
+        i = i + 1
+      end
+
+      result
+      # MB: end hack
+     
     end
 
     # returns the url to post to
